@@ -1,0 +1,423 @@
+---
+title: "678 Final project with Melbourne housing prices  "
+author: "Yang Xiao"
+date: "2023-12-07"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(caret)
+library(stats)
+library(lme4)
+library(glmnet)
+library(caTools)
+library(lmtest)
+library(car)
+library(rstanarm)
+library(bayesplot)
+```
+
+
+# 1. Abstract
+
+This report investigates the determinants of housing prices using a dataset with variables such as Distance, Rooms, BuildingArea, YearBuilt, and Landsize. Employing various models—null, complete pooling, partial pooling, and no pooling—we explore the effects of these predictors. The Bayesian regression approach via Stan provides a holistic view of the influence each variable has on housing prices, with an emphasis on understanding the nuances of each model's implications.
+
+# 2. Introduction
+
+Housing prices are influenced by a myriad of factors, and dissecting these can help stakeholders make informed decisions. With this in mind, our study applies multiple regression models to parse out the effects of proximity, property size, and age on housing prices. By comparing models that incorporate different assumptions about data structure, we aim to pinpoint the most influential factors.
+
+# 3. Method
+
+The study started with data cleansing, followed by logarithmic transformations to normalize price distribution. We fitted a series of models: a null model to establish a baseline, complete pooling to ignore group structure, partial pooling to account for group variations without overfitting, and no pooling to fully recognize group differences. Bayesian models provided posterior distributions for each predictor, with 'stan_glm' offering further insight. Model diagnostics checked for convergence and fit.
+
+# 4. Results
+
+
+
+
+## 4.1 Data cleaning
+
+```{r,echo=FALSE}
+
+
+
+
+# Read the data
+melbourne_data <- read.csv('Melbourne_housing_FULL.csv')
+
+# Remove rows with missing values in 'Price', 'Distance', 'Rooms', 'BuildingArea', 'YearBuilt', 'Landsize'
+cleaned_data <- melbourne_data %>% 
+  filter(!is.na(Price) & !is.na(Distance) & !is.na(Rooms) & !is.na(BuildingArea) & !is.na(YearBuilt) & !is.na(Landsize))
+
+# Convert data types
+cleaned_data$Date <- dmy(cleaned_data$Date)  # Convert 'Date' to date format
+cleaned_data$Postcode <- as.character(cleaned_data$Postcode)  # Convert 'Postcode' to character type
+
+# Filter for suburbs with more than 50 samples
+suburb_counts <- table(cleaned_data$Suburb)
+suburbs_over_50 <- names(suburb_counts[suburb_counts > 50])
+filtered_data <- cleaned_data %>% filter(Suburb %in% suburbs_over_50)
+# Convert 'Distance' to numeric if it is not
+filtered_data$Distance <- as.numeric(as.character(filtered_data$Distance))
+
+
+```
+
+I have included the code for data cleaning in the Appendix.
+
+
+
+
+## 4.2 NULL MODEL
+
+
+```{r}
+# Build a null model
+null_model <- glm(log(Price) ~ 1, data = filtered_data, family = gaussian())
+summary(null_model)
+
+
+
+```
+
+## 4.3 Linear Mixed-Effects Model (LMM)
+
+```{r}
+model <- glmer(log(Price) ~ Distance + Rooms + BuildingArea + YearBuilt + Landsize + (1 | Suburb),
+               data = filtered_data, 
+               family = gaussian)
+
+summary(model)
+
+
+```
+
+Analysis:
+Intercept: The model's intercept is approximately 19.26. This is the base level of the log-transformed price when all other variables are held at zero.
+
+Distance: The coefficient for 'Distance' is -0.0456, indicating a negative relationship with the log-transformed price.
+
+Rooms: The coefficient for 'Rooms' is around 0.2942, suggesting a positive relationship with the log-transformed price.
+
+BuildingArea: The 'BuildingArea' coefficient is approximately 0.00118, showing a positive relationship with the log-transformed price.
+
+YearBuilt: The 'YearBuilt' coefficient is about -0.00312, indicating a negative relationship with the log-transformed price.
+
+Landsize: The coefficient for 'Landsize' is approximately 9.409e-06, indicating a very small positive effect on the log-transformed price.
+
+
+
+## 4.4 Plot for LMM
+```{r,echo=FALSE}
+# Residuals vs Fitted Values Plot
+fitted_values <- fitted(model)
+residuals <- resid(model)
+
+ggplot(filtered_data, aes(x = fitted_values, y = residuals)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Fitted Values", y = "Residuals", title = "Residuals vs Fitted Values")
+
+# Q-Q Plot of Residuals
+qqnorm(residuals)
+qqline(residuals, col = "red")
+
+```
+Analysis: Overall, these plots suggest that while the model captures a significant portion of the variance in the data (as indicated by the relatively linear pattern in the residuals plot and the mostly normal distribution in the Q-Q plot), there may be some non-linearity or heteroscedasticity that isn't fully addressed by the model.
+
+
+
+## 4.5 Complete pooling model
+
+```{r}
+
+
+# Build a complete pooling model
+complete_pooling_model <- lm(log(Price) ~ Distance + Rooms + BuildingArea + YearBuilt + Landsize, data = filtered_data)
+summary(complete_pooling_model)
+
+
+
+
+
+```
+
+
+Analysis:
+
+Intercept: The model's intercept is approximately 19.70. This is the base level of the log-transformed price when all other variables are held at zero.
+
+Distance: The coefficient for 'Distance' is -0.0362, indicating a negative relationship with the log-transformed price.
+
+Rooms: The coefficient for 'Rooms' is around 0.2958, suggesting a positive relationship with the log-transformed price.
+
+BuildingArea: The 'BuildingArea' coefficient is approximately 0.0017, showing a positive relationship with the log-transformed price.
+
+YearBuilt: The 'YearBuilt' coefficient is about -0.0034, indicating a negative relationship with the log-transformed price.
+
+Landsize: The coefficient for 'Landsize' is approximately 1.18e-05, indicating a very small positive effect on the log-transformed price.
+
+
+
+## 4.6 Plot for Complete pooling model
+
+```{r, echo=FALSE}
+# Residuals vs Fitted Values Plot for Complete Pooling Model
+cp_fitted_values <- fitted(complete_pooling_model)
+cp_residuals <- resid(complete_pooling_model)
+
+ggplot(filtered_data, aes(x = cp_fitted_values, y = cp_residuals)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Fitted Values", y = "Residuals", title = "Residuals vs Fitted Values for Complete Pooling Model")
+
+# Q-Q Plot of Residuals for Complete Pooling Model
+qqnorm(cp_residuals)
+qqline(cp_residuals, col = "red")
+
+
+
+
+
+```
+
+
+
+Analysis: These plots indicate that the complete pooling model, like the previous model, captures significant variance in the data but may still be improved by addressing potential non-linear relationships or heteroscedasticity.
+
+
+
+
+
+## 4.7 No pooling
+
+```{r}
+# Build individual models for each suburb
+no_pooling_models <- lapply(unique(filtered_data$Suburb), function(suburb) {
+  suburb_data <- filtered_data[filtered_data$Suburb == suburb, ]
+  lm(Price ~ Distance + Rooms + BuildingArea + YearBuilt + Landsize, data = suburb_data)
+})
+
+
+
+```
+
+Due to no pooling's stratified analysis of each suburb, many results were obtained, which I have presented in the appendix.
+
+
+Analysis:
+
+The no pooling analysis across various Melbourne suburbs reveals that the number of rooms consistently has a positive impact on housing prices, while distance from the city center generally has a negative effect. The building area's influence varies by suburb, but it is often significant. Year built and land size show mixed results across the different suburbs, suggesting that these factors may be context-dependent or influenced by other unaccounted variables.
+
+
+## 4.8 Partial pooling
+
+```{r}
+# Build a partial pooling model
+partial_pooling_model <- lmer(log(Price) ~ Distance + Rooms + BuildingArea + YearBuilt + Landsize + (1 | Suburb), data = filtered_data)
+
+# Print the model summary
+summary(partial_pooling_model)
+
+
+```
+Analysis:
+
+Intercept (const): The average log-transformed price across all suburbs is approximately 19.26 when all other predictors are zero.
+
+Distance: The coefficient of -0.046 suggests that as the distance increases, the log-transformed price tends to decrease.
+
+Rooms: A coefficient of 0.294 indicates that each additional room is associated with an increase in the log-transformed price.
+
+BuildingArea: The coefficient of 0.0012 shows a positive relationship between building area and log-transformed price.
+
+YearBuilt: The coefficient of -0.003 suggests newer properties (with a more recent year built) have a higher log-transformed price.
+
+Landsize: The coefficient is very small (0.000), indicating a marginal positive effect on the log-transformed price.
+
+
+## 4.9 Plot for Partial pooling 
+
+
+```{r,echo=FALSE}
+
+# Residuals vs Fitted Values Plot
+fitted_values <- fitted(partial_pooling_model)
+residuals <- resid(partial_pooling_model)
+
+ggplot(data.frame(fitted_values, residuals), aes(x = fitted_values, y = residuals)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Fitted Values", y = "Residuals", title = "Residuals vs Fitted Values for Partial Pooling Model")
+
+# Q-Q Plot of Residuals
+qqnorm(residuals)
+qqline(residuals, col = "red")
+
+```
+
+Analysis:
+
+Overall,The results obtained by fitting partial pooling are not significantly different from the previous models, these plots indicate that the partial pooling model captures a significant portion of the variance in the data.
+
+
+
+
+## 4.10 Stan Glm 
+
+```{r,echo=FALSE, results='hide'}
+
+# Fitting the model with stan_glm
+
+filtered_data$Log_Price <- log(filtered_data$Price)
+
+
+stan_model <- stan_glm(
+  Log_Price ~ Distance + Rooms + BuildingArea + YearBuilt + Landsize, 
+  data = filtered_data,
+  family = gaussian(),
+  prior = normal(0, 2.5, autoscale = TRUE), 
+  prior_intercept = normal(0, 10, autoscale = TRUE),
+  seed = 12345
+)
+```
+
+
+
+```{r}
+# Assuming 'model' is your fitted stan_glm model
+summary_model <- summary(model)
+
+# Print the summary with four decimal places
+print(summary_model, digits = 6)
+
+
+
+```
+
+The chain generated by stan_glm fitting is longer, so I have included it in the Appendix.
+
+
+
+
+
+
+## 4.11 Plot for Stan Glm
+
+
+
+```{r, echo=FALSE}
+
+
+# Trace plots for MCMC chains
+mcmc_trace(stan_model, pars = c("(Intercept)", "Distance", "Rooms", "BuildingArea", "YearBuilt", "Landsize"))
+
+# Residuals plot
+pp_check(stan_model)
+
+
+
+
+```
+
+
+Analysis:
+
+
+The posterior predictive check indicates that the model generally captures the central tendency of the observed data well, with some examination of the tails needed. The trace plots suggest good convergence and mixing of the MCMC chains for all parameters, with no apparent divergences or trends, indicating reliable posterior estimates.
+
+
+
+# 5. Discussion
+
+The 'Rooms' feature stands out across models as a key price predictor, asserting the importance of property size in valuation. However, the influence of 'BuildingArea' and 'YearBuilt' varied, indicating that their effects might be context-dependent. Future research could introduce additional predictors and employ machine learning to enhance predictive power. These findings can inform real estate valuations and contribute to housing market policy formulations.
+
+# 6. Conclusion
+
+In Melbourne's diverse real estate market, housing prices are influenced by a mix of property features and location-specific factors. Across various models, the number of rooms consistently shows a positive impact on prices, indicating a preference for larger properties. Distance from the city center generally correlates negatively with prices, although this varies by suburb. Building area, year built, and land size have mixed influences, highlighting the uniqueness of each suburb. These findings emphasize the complexity of Melbourne's housing market, where property values are shaped by both general trends and localized characteristics, necessitating nuanced, area-specific analysis.
+
+
+# 7. Appendix
+
+
+
+## Data cleaning
+
+```{r}
+
+
+
+
+# Read the data
+melbourne_data <- read.csv('Melbourne_housing_FULL.csv')
+
+# Remove rows with missing values in 'Price', 'Distance', 'Rooms', 'BuildingArea', 'YearBuilt', 'Landsize'
+cleaned_data <- melbourne_data %>% 
+  filter(!is.na(Price) & !is.na(Distance) & !is.na(Rooms) & !is.na(BuildingArea) & !is.na(YearBuilt) & !is.na(Landsize))
+
+# Convert data types
+cleaned_data$Date <- dmy(cleaned_data$Date)  # Convert 'Date' to date format
+cleaned_data$Postcode <- as.character(cleaned_data$Postcode)  # Convert 'Postcode' to character type
+
+# Filter for suburbs with more than 50 samples
+suburb_counts <- table(cleaned_data$Suburb)
+suburbs_over_50 <- names(suburb_counts[suburb_counts > 50])
+filtered_data <- cleaned_data %>% filter(Suburb %in% suburbs_over_50)
+# Convert 'Distance' to numeric if it is not
+filtered_data$Distance <- as.numeric(as.character(filtered_data$Distance))
+
+
+```
+
+
+
+
+
+## Stan Glm 
+
+```{r}
+
+# Fitting the model with stan_glm
+
+filtered_data$Log_Price <- log(filtered_data$Price)
+
+
+stan_model <- stan_glm(
+  Log_Price ~ Distance + Rooms + BuildingArea + YearBuilt + Landsize, 
+  data = filtered_data,
+  family = gaussian(),
+  prior = normal(0, 2.5, autoscale = TRUE), 
+  prior_intercept = normal(0, 10, autoscale = TRUE),
+  seed = 12345
+)
+```
+
+
+
+
+## No pooling
+```{r}
+# Iterate over each suburb and print model summary
+for(suburb in unique(filtered_data$Suburb)) {
+  suburb_data <- filtered_data[filtered_data$Suburb == suburb, ]
+  model <- lm(log(Price) ~ Distance + Rooms + BuildingArea + YearBuilt + Landsize, data = suburb_data)
+  
+ 
+ # Print suburb name and model summary
+  cat("\n\nSuburb:", suburb, "\n")
+  print(summary(model)$r.squared)  # Print the R-squared value
+  print(summary(model)$coefficients)  # Print the coefficient estimates
+}
+
+
+
+```
+
+

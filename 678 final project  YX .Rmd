@@ -110,7 +110,7 @@ Analysis:
 ## 4.3 NULL MODEL
 
 
-```{r}
+```{r,echo=FALSE}
 # Build a null model
 null_model <- glm(log(Price) ~ 1, data = filtered_data, family = gaussian())
 summary(null_model)
@@ -121,7 +121,7 @@ summary(null_model)
 
 ## 4.4 Linear Mixed-Effects Model (LMM)
 
-```{r}
+```{r,echo=FALSE}
 model <- glmer(log(Price) ~ Distance + Rooms + BuildingArea + YearBuilt + Landsize + (1 | Suburb),
                data = filtered_data, 
                family = gaussian)
@@ -168,7 +168,7 @@ Analysis: Overall, these plots suggest that while the model captures a significa
 
 ## 4.6 Complete pooling model
 
-```{r}
+```{r,echo=FALSE}
 
 
 # Build a complete pooling model
@@ -230,7 +230,7 @@ Analysis: These plots indicate that the complete pooling model, like the previou
 
 ## 4.8 No pooling
 
-```{r}
+```{r,echo=FALSE}
 # Build individual models for each suburb
 no_pooling_models <- lapply(unique(filtered_data$Suburb), function(suburb) {
   suburb_data <- filtered_data[filtered_data$Suburb == suburb, ]
@@ -251,7 +251,7 @@ The no pooling analysis across various Melbourne suburbs reveals that the number
 
 ## 4.9 Partial pooling
 
-```{r}
+```{r,echo=FALSE}
 # Build a partial pooling model
 partial_pooling_model <- lmer(log(Price) ~ Distance + Rooms + BuildingArea + YearBuilt + Landsize + (1 | Suburb), data = filtered_data)
 
@@ -323,7 +323,7 @@ stan_model <- stan_glm(
 
 
 
-```{r}
+```{r,echo=FALSE}
 # Assuming 'model' is your fitted stan_glm model
 summary_model <- summary(model)
 
